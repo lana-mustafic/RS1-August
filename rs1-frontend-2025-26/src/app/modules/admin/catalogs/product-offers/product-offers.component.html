@@ -1,0 +1,18 @@
+<section class="exam-page">
+  <header><h1>Promotivne ponude</h1><button mat-flat-button color="primary" (click)="add()"><mat-icon>add</mat-icon>Nova ponuda</button></header>
+  <div class="filters">
+    <mat-form-field appearance="outline"><mat-label>Proizvod</mat-label><mat-select (selectionChange)="filtersChanged()"><mat-option [value]="null">Svi proizvodi</mat-option>@for (product of products; track product.id) {<mat-option [value]="product.id">{{ product.name }}</mat-option>}</mat-select></mat-form-field>
+    <mat-checkbox (change)="filtersChanged()">Samo aktivne</mat-checkbox>
+  </div>
+  <div class="table-wrap"><table mat-table [dataSource]="rows">
+    <ng-container matColumnDef="code"><th mat-header-cell *matHeaderCellDef>Oznaka</th><td mat-cell *matCellDef="let row">{{ row.code }}</td></ng-container>
+    <ng-container matColumnDef="product"><th mat-header-cell *matHeaderCellDef>Proizvod</th><td mat-cell *matCellDef="let row">{{ row.product }}</td></ng-container>
+    <ng-container matColumnDef="price"><th mat-header-cell *matHeaderCellDef>Redovna cijena</th><td mat-cell *matCellDef="let row">{{ row.price | number:'1.2-2' }}</td></ng-container>
+    <ng-container matColumnDef="discount"><th mat-header-cell *matHeaderCellDef>Popust</th><td mat-cell *matCellDef="let row">{{ row.discount }}%</td></ng-container>
+    <ng-container matColumnDef="discounted"><th mat-header-cell *matHeaderCellDef>Cijena s popustom</th><td mat-cell *matCellDef="let row">{{ row.discounted | number:'1.2-2' }}</td></ng-container>
+    <ng-container matColumnDef="validUntil"><th mat-header-cell *matHeaderCellDef>Vazi do</th><td mat-cell *matCellDef="let row">{{ row.validUntil | date:'dd.MM.yyyy' }}</td></ng-container>
+    <ng-container matColumnDef="state"><th mat-header-cell *matHeaderCellDef>Status</th><td mat-cell *matCellDef="let row"><span class="status">{{ row.stateLabel }}</span></td></ng-container>
+    <ng-container matColumnDef="actions"><th mat-header-cell *matHeaderCellDef>Akcije</th><td mat-cell *matCellDef="let row"><button mat-icon-button title="Uredi" (click)="edit(row.id)"><mat-icon>edit</mat-icon></button><button mat-icon-button title="Obrisi" [disabled]="row.isEnabled" (click)="delete(row.id)"><mat-icon>delete</mat-icon></button></td></ng-container>
+    <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr><tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+  </table><mat-paginator [length]="12" [pageSize]="5" [pageSizeOptions]="[5, 10]"></mat-paginator></div>
+</section>
