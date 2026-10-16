@@ -731,7 +731,55 @@ public sealed class ListProductOffersQueryDto
 }
 ```
 
-`IsEnabled` treba frontendu da disable-a dugme Obriši.
+Ovaj DTO nije gotov u starteru. Fajl `ListProductOfferQueryDto.cs` koji Visual Studio napravi je prazan. U njega ide ovaj sadržaj.
+
+Izgled klase (`public sealed class`, `required`, `{ get; init; }`) vidiš u `ListProductCategoriesQueryDto`. Tamo su samo `Id`, `Name` i `IsEnabled` kategorije. Ta polja se ne prepisuju ovdje. Polja ponude dolaze iz entiteta, kako je u tabelama ispod.
+
+Ako je tvoj query već `ListProductOfferQuery` (jednina), klasa u DTO fajlu mora imati isto ime koje query koristi: `ListProductOfferQueryDto`. `using` i `namespace` ostaju kao u kodu iznad.
+
+### Odakle koje polje
+
+DTO je odgovor za listu. Nije entitet i ne snima se u bazu. Handler ga napuni iz dva postojeća entiteta, a tri polja izračuna.
+
+**Sa `ProductOfferEntity`**
+
+Fajl: `Market.Domain/Entities/Catalog/ProductOfferEntity.cs`. `Id` nasljeđuje iz `BaseEntity`.
+
+| Polje u DTO-u | Polje na ponudi |
+|---------------|-----------------|
+| `Id` | `Id` |
+| `Code` | `Code` |
+| `ProductId` | `ProductId` |
+| `DiscountPercent` | `DiscountPercent` |
+| `ValidUntilUtc` | `ValidUntilUtc` |
+| `IsEnabled` | `IsEnabled` |
+
+`IsEnabled` ostaje u DTO-u jer frontend njime gasi dugme Obriši. Brisanje je dozvoljeno samo kad je ponuda isključena.
+
+**Sa povezanog `ProductEntity`**
+
+Fajl: `Market.Domain/Entities/Catalog/ProductEntity.cs`. Ponuda do proizvoda dolazi preko `ProductOfferEntity.Product` (veza je `ProductId`).
+
+| Polje u DTO-u | Polje na proizvodu |
+|---------------|--------------------|
+| `ProductName` | `Name` |
+| `Price` | `Price` |
+
+`Price` je redovna cijena proizvoda. Ime u DTO-u nije `Name`, jer lista mora reći da je to cijena, a naziv ide u `ProductName`.
+
+**Računa se, nema ga na entitetu**
+
+Ova tri polja ne postoje ni na ponudi ni na proizvodu. Handler ih napravi preko `ProductOfferRules` iz odjeljka 7:
+
+| Polje u DTO-u | Kako nastane |
+|---------------|----------------|
+| `State` | `ResolveState(IsEnabled, ValidUntilUtc, todayUtc)` |
+| `StateLabel` | `StateLabel(State)` — tekst „Aktivna", „Istekla" ili „Isključena" |
+| `DiscountedPrice` | `CalculateDiscountedPrice(Product.Price, DiscountPercent)` |
+
+`using Market.Domain.Entities.Catalog` je tu samo zato što je `State` tipa `ProductOfferStateType`.
+
+U DTO ne idu `CreatedAtUtc`, `ModifiedAtUtc`, `IsDeleted`, ni ostala polja proizvoda (`Description`, `StockQuantity`, `CategoryId`). Lista traži samo kolone iz zadatka. `CreatedAtUtc` se koristi za sort u handleru, ali se ne vraća klijentu.
 
 ### 8.4. Korak — Handler
 
