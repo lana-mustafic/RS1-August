@@ -449,19 +449,51 @@ Za test „jedna aktivna po proizvodu" kreiraj **novu** ponudu s datumom danas i
 
 ## 7. Backend — zajednička pravila (helper)
 
-### Šta treba napraviti
+Ovo je prvi fajl koji sama praviš. U starteru **nema** `ProductOfferRules`. Nema ga ni u `ProductCategories`, `Products` ni `ExamProducts` — nemaš šta da prekopiraš. Ime klase nije obavezno, ali **isti izračun** moraš kasnije zvati iz List, Create i Update. Ako status računaš na tri mjesta različito, gubiš bodove.
 
-U folderu `Market.Application/Modules/Catalog/ProductOffers` kreirati fajl:
+U ovom koraku još ne praviš endpoint, validator ni handler. Samo jednu statičku klasu.
 
-`ProductOfferRules.cs`
+### Zašto baš ovdje
 
-Klasa `ProductOfferRules` nije obavezna po imenu, ali **isti izračun** moraš koristiti u List, Create i Update. Ako status računaš na tri mjesta različito, gubiš bodove.
+Zadatak daje strogi redoslijed statusa (odjeljak 6). Helper sprječava da lista kaže „Aktivna", a provjera „jedna aktivna po proizvodu" misli da nije.
 
-### Zašto
+Klasa je `static`. Ne registruješ je u `DependencyInjection`, ne praviš interface i ne diraš `Program.cs`. Handler je zove kao `ProductOfferRules.ResolveState(...)`.
 
-Zadatak daje strogi redoslijed. Helper sprječava da List kaže „Aktivna", a unique provjera misli da nije.
+Ne stavljaš je u `Market.Domain` ni u `Market.Infrastructure`. Enum `ProductOfferStateType` već stoji u Domainu. Helper stoji u Application sloju, jer ga zovu handleri.
 
-### Kod
+`todayUtc` se **ne** računa unutar ove klase. Svaki handler ga uzme jednom (`DateTime.UtcNow.Date`) i proslijedi. Tako jedan zahtjev ima jedan referentni dan, kako zadatak traži.
+
+### 7.1. Gdje u Solution Exploreru
+
+Otvori `rs1_backend-2025-26.sln`.
+
+Proširi:
+
+`Market.Application` → `Modules` → `Catalog`
+
+Tu već vidiš `ProductCategories`, `Products` i `ExamProducts`. `ProductOffers` **ne postoji**. Praviš ga.
+
+### 7.2. Korak — folder
+
+1. Desni klik na `Catalog`.
+2. Add → New Folder.
+3. Ime: `ProductOffers`.
+
+Putanja na disku:
+
+`Market.Application/Modules/Catalog/ProductOffers`
+
+### 7.3. Korak — klasa
+
+1. Desni klik na novi folder `ProductOffers`.
+2. Add → Class.
+3. Ime fajla: `ProductOfferRules.cs`.
+4. Obriši ono što Visual Studio sam ubaci (prazan `class ProductOfferRules` i `using` koje ti ne trebaju).
+5. Zalijepi kod ispod, cijeli fajl, ništa ne skraćuj.
+
+Namespace mora biti tačno `Market.Application.Modules.Catalog.ProductOffers`. Ako Visual Studio stavi `Market.Application` ili `Market.Application.Modules.Catalog`, kasniji handleri neće naći klasu bez dodatnog `using`.
+
+### 7.4. Kod koji upisuješ
 
 ```csharp
 using Market.Domain.Entities.Catalog;
@@ -510,10 +542,44 @@ public static class ProductOfferRules
 }
 ```
 
+`using Market.Domain.Entities.Catalog` treba jer je `ProductOfferStateType` u tom namespaceu. `Market.Application` već referencira `Market.Domain`, novi Project Reference ne dodaješ.
+
+### 7.5. Šta koja metoda radi
+
+**`ResolveState`** — status se ne čita iz kolone. Računa se ovim redom i red se ne smije okrenuti:
+
+1. `IsEnabled == false` → `Iskljucena`, čak i kad je datum u budućnosti ili u prošlosti.
+2. Inače, ako je kalendarski dan `ValidUntilUtc` prije `todayUtc` → `Istekla`.
+3. Inače → `Aktivna`. Danas (`ValidUntilUtc.Date == todayUtc.Date`) je još aktivno.
+
+Poređenje je `.Date`, ne puni `DateTime`. Vrijeme u toku dana ne smije ponudu proglasiti isteklom.
+
+**`IsActive`** — vraća `true` samo kad je status `Aktivna`. Ovu metodu kasnije zoveš u Create i Update za pravilo „jedan proizvod, najviše jedna aktivna ponuda". Uključena ali istekla ponuda ovdje vraća `false` i **ne blokira** novu.
+
+**`CalculateDiscountedPrice`** — formula iz zadatka:
+
+`Round(cijena * (1 - popust / 100), 2)` uz `MidpointRounding.AwayFromZero`.
+
+- Tip je `decimal`. Djelilac je `100m`, ne `100` i ne `double`.
+- Računa se za svaku ponudu: aktivnu, isteklu i isključenu.
+- Rezultat ide u DTO. **Ne** upisuješ ga u `Product.Price`.
+
+Primjer: cijena `20.00`, popust `10` → `18.00`.
+
+**`StateLabel`** — tekst za kolonu u listi. Enum se zove `Iskljucena` (bez č), a na ekranu mora pisati `Isključena`. Zato ne vraćaš `state.ToString()` za taj slučaj.
+
+### 7.6. Šta u ovom koraku ne radiš
+
+- Ne dodaješ migraciju i ne diraš `ProductOfferEntity` ni `ProductOfferConfiguration`.
+- Ne praviš controller, query, command ni validator. To su sljedeći odjeljci.
+- Ne računaš status u frontendu. Lista će dobiti `state` i `stateLabel` iz API-ja.
+- Ne zoveš `DateTime.UtcNow` unutar ove klase.
+
 ### Provjera
 
-- Solution se builda.
-- Još nema endpointa — to je očekivano.
+1. Desni klik na projekat `Market.Application` → Build.
+2. Build prolazi, bez crvenih grešaka na `ProductOfferRules.cs`.
+3. U Swaggeru još nema `/ProductOffers`. To je očekivano: endpoint dolazi tek kad dodaš controller.
 
 ---
 
