@@ -544,29 +544,99 @@ public static class ProductOfferRules
 
 `using Market.Domain.Entities.Catalog` treba jer je `ProductOfferStateType` u tom namespaceu. `Market.Application` već referencira `Market.Domain`, novi Project Reference ne dodaješ.
 
-### 7.5. Šta koja metoda radi
+### 7.5. Šta koji dio koda znači
 
-**`ResolveState`** — status se ne čita iz kolone. Računa se ovim redom i red se ne smije okrenuti:
+Za ovaj fajl ne otvaraš drugi handler u projektu. Nema slične `Rules` klase. Jedini postojeći kod koji ova klasa koristi je enum u `Market.Domain/Entities/Catalog/ProductOfferStateType.cs`:
 
-1. `IsEnabled == false` → `Iskljucena`, čak i kad je datum u budućnosti ili u prošlosti.
-2. Inače, ako je kalendarski dan `ValidUntilUtc` prije `todayUtc` → `Istekla`.
-3. Inače → `Aktivna`. Danas (`ValidUntilUtc.Date == todayUtc.Date`) je još aktivno.
+```csharp
+public enum ProductOfferStateType
+{
+    Aktivna = 1,
+    Istekla = 2,
+    Iskljucena = 3
+}
+```
 
-Poređenje je `.Date`, ne puni `DateTime`. Vrijeme u toku dana ne smije ponudu proglasiti isteklom.
+`Aktivna`, `Istekla` i `Iskljucena` u helperu su baš ove tri vrijednosti. Ostalo (`static`, `Math.Round`, `switch`) je običan C#, ne obrazac iz `ProductCategories`.
 
-**`IsActive`** — vraća `true` samo kad je status `Aktivna`. Ovu metodu kasnije zoveš u Create i Update za pravilo „jedan proizvod, najviše jedna aktivna ponuda". Uključena ali istekla ponuda ovdje vraća `false` i **ne blokira** novu.
+**`using Market.Domain.Entities.Catalog;`**
 
-**`CalculateDiscountedPrice`** — formula iz zadatka:
+Uvozi folder u kojem stoji enum. Poslije toga pišeš `ProductOfferStateType`, a ne puno ime `Market.Domain.Entities.Catalog.ProductOfferStateType`.
 
-`Round(cijena * (1 - popust / 100), 2)` uz `MidpointRounding.AwayFromZero`.
+**`namespace Market.Application.Modules.Catalog.ProductOffers;`**
 
-- Tip je `decimal`. Djelilac je `100m`, ne `100` i ne `double`.
-- Računa se za svaku ponudu: aktivnu, isteklu i isključenu.
-- Rezultat ide u DTO. **Ne** upisuješ ga u `Product.Price`.
+Adresa ove klase. Mora se poklapati sa folderom. Handleri koje kasnije staviš u `ProductOffers` vide `ProductOfferRules` bez dodatnog `using`.
 
-Primjer: cijena `20.00`, popust `10` → `18.00`.
+**`public static class ProductOfferRules`**
 
-**`StateLabel`** — tekst za kolonu u listi. Enum se zove `Iskljucena` (bez č), a na ekranu mora pisati `Isključena`. Zato ne vraćaš `state.ToString()` za taj slučaj.
+`static` znači da se ne pravi objekat (`new` se ne piše) i da se klasa ne registruje u `DependencyInjection`. Poziv izgleda ovako:
+
+```csharp
+ProductOfferRules.ResolveState(ponuda.IsEnabled, ponuda.ValidUntilUtc, todayUtc);
+```
+
+**`ResolveState` — koji je status**
+
+Prima tri podatka i vraća jedan od tri statusa:
+
+| Parametar | Šta je |
+|-----------|--------|
+| `isEnabled` | da li je ponuda uključena (`IsEnabled` sa entiteta) |
+| `validUntilUtc` | do kog datuma važi |
+| `todayUtc` | današnji UTC datum, koji handler proslijedi |
+
+`return` odmah izlazi iz metode. Zato je red `if` obavezan i ne smije se okrenuti:
+
+1. `if (!isEnabled)` — uzvičnik znači „nije uključena". Odmah vraća `Iskljucena`. Datum se ne gleda. Isključena ponuda sa datumom u budućnosti i dalje je isključena.
+2. `if (validUntilUtc.Date < todayUtc.Date)` — ponuda jeste uključena, ali je dan važenja prije današnjeg. Vraća `Istekla`. `.Date` skida sate i minute, pa se poredi samo kalendarski dan. Vrijeme u toku dana ne smije ponudu proglasiti isteklom.
+3. Zadnji `return` — uključena je i datum je danas ili kasnije. Vraća `Aktivna`. Jednak dan (`==`) nije istek, jer uslov za istek je strogo `<`.
+
+Primjer, danas 16.10.2026:
+
+| Uključena | Važi do | Rezultat |
+|-----------|---------|----------|
+| ne | 01.01.2030 | Isključena |
+| da | 15.10.2026 | Istekla |
+| da | 16.10.2026 | Aktivna |
+| da | 20.10.2026 | Aktivna |
+
+`todayUtc` se ne računa u ovoj klasi. Handler na početku uzme jednom `DateTime.UtcNow.Date` i proslijedi isti dan u svaki poziv tog zahtjeva.
+
+**`IsActive` — da li je baš aktivna**
+
+Ista tri parametra. Unutra zove `ResolveState` i poredi rezultat sa `ProductOfferStateType.Aktivna`. Vraća `bool`: `true` ili `false`.
+
+Kasnije je zoveš u Create i Update za pravilo „jedan proizvod smije imati samo jednu aktivnu ponudu". Uključena, ali istekla ponuda ovdje daje `false` i ne blokira novu.
+
+**`CalculateDiscountedPrice` — cijena s popustom**
+
+Prima redovnu cijenu proizvoda i procenat popusta. Oba su `decimal`.
+
+Unutrašnji izraz je formula iz zadatka:
+
+```text
+cijena * (1 - popust / 100)
+```
+
+`100m` je decimalni broj 100. Slovo `m` drži dijeljenje u `decimal`. Običan `100` ili `double` ovdje ne ide.
+
+`Math.Round(..., 2, MidpointRounding.AwayFromZero)` zaokružuje na dvije decimale. `AwayFromZero` znači da se .5 uvijek odmiče od nule: 1.125 postaje 1.13.
+
+Cijena `20.00` i popust `10` daju `20 * 0.90 = 18.00`.
+
+Računa se za svaku ponudu: aktivnu, isteklu i isključenu. Rezultat ide u DTO liste. Ne upisuje se u `Product.Price`.
+
+**`StateLabel` — tekst za tabelu**
+
+Prima status koji je `ResolveState` već vratio i vraća string za kolonu.
+
+`switch` bira jednu granu:
+
+- `Aktivna` → `"Aktivna"`
+- `Istekla` → `"Istekla"`
+- `Iskljucena` → `"Isključena"`
+
+Enum se u kodu zove `Iskljucena`, bez slova č. Na ekranu mora pisati „Isključena", zato se ne oslanjaš na `state.ToString()` za taj slučaj. Grana `_` je rezerva ako se enum jednog dana proširi; za ovaj ispit se ne okida.
 
 ### 7.6. Šta u ovom koraku ne radiš
 
