@@ -1204,14 +1204,10 @@ public sealed class UpdateProductOfferCommandValidator
 
         RuleFor(x => x.Code)
             .Cascade(CascadeMode.Stop)
-            .Must(v => !string.IsNullOrWhiteSpace(v))
-                .WithMessage("Oznaka je obavezna.")
-            .Must(v =>
-            {
-                var t = v.Trim();
-                return t.Length is >= 5 and <= 20;
-            }).WithMessage("Oznaka mora imati 5 do 20 znakova.")
-            .Must(v => v.Trim().StartsWith("OFF-", StringComparison.Ordinal))
+            .NotEmpty().WithMessage("Oznaka je obavezna.")
+            .Must(code => code.Trim().Length is >= 5 and <= 20)
+                .WithMessage("Oznaka mora imati 5 do 20 znakova.")
+            .Must(code => code.Trim().StartsWith("OFF-", StringComparison.Ordinal))
                 .WithMessage("Oznaka mora počinjati sa OFF-.");
 
         RuleFor(x => x.ProductId)
@@ -1219,23 +1215,24 @@ public sealed class UpdateProductOfferCommandValidator
             .WithMessage("Proizvod je obavezan.");
 
         RuleFor(x => x.DiscountPercent)
-            .GreaterThan(0)
-            .WithMessage("Popust mora biti veći od 0.")
-            .LessThanOrEqualTo(50)
-            .WithMessage("Popust ne smije biti veći od 50.")
-            .Must(v => decimal.Round(v, 2, MidpointRounding.AwayFromZero) == v)
+            .GreaterThan(0).WithMessage("Popust mora biti veći od 0.")
+            .LessThanOrEqualTo(50).WithMessage("Popust ne smije biti veći od 50.")
+            .Must(value => value == decimal.Round(value, 2))
             .WithMessage("Popust može imati najviše dvije decimale.");
 
         RuleFor(x => x.ValidUntilUtc)
-            .Must(d => d != default)
+            .Must(date => date != default)
             .WithMessage("Datum važenja je obavezan.");
 
         RuleFor(x => x)
             .Must(x => !x.IsEnabled || x.ValidUntilUtc.Date >= DateTime.UtcNow.Date)
-            .WithMessage("Uključena ponuda ne smije imati datum prije današnjeg UTC datuma.");
+            .WithMessage("Uključena ponuda ne smije imati datum prije današnjeg UTC datuma.")
+            .When(x => x.ValidUntilUtc != default);
     }
 }
 ```
+
+`When` preskače provjeru prošlog datuma ako datum uopšte nije poslat. Tada ostaje samo poruka da je datum obavezan. Ako je `IsEnabled` false, prošli datum prolazi. Ako je true, datum mora biti danas ili kasnije.
 
 ### 11.4. Handler
 
