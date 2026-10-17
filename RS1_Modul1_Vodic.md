@@ -1033,14 +1033,10 @@ public sealed class CreateProductOfferCommandValidator
     {
         RuleFor(x => x.Code)
             .Cascade(CascadeMode.Stop)
-            .Must(v => !string.IsNullOrWhiteSpace(v))
-                .WithMessage("Oznaka je obavezna.")
-            .Must(v =>
-            {
-                var t = v.Trim();
-                return t.Length is >= 5 and <= 20;
-            }).WithMessage("Oznaka mora imati 5 do 20 znakova.")
-            .Must(v => v.Trim().StartsWith("OFF-", StringComparison.Ordinal))
+            .NotEmpty().WithMessage("Oznaka je obavezna.")
+            .Must(code => code.Trim().Length is >= 5 and <= 20)
+                .WithMessage("Oznaka mora imati 5 do 20 znakova.")
+            .Must(code => code.Trim().StartsWith("OFF-", StringComparison.Ordinal))
                 .WithMessage("Oznaka mora počinjati sa OFF-.");
 
         RuleFor(x => x.ProductId)
@@ -1048,30 +1044,26 @@ public sealed class CreateProductOfferCommandValidator
             .WithMessage("Proizvod je obavezan.");
 
         RuleFor(x => x.DiscountPercent)
-            .GreaterThan(0)
-            .WithMessage("Popust mora biti veći od 0.")
-            .LessThanOrEqualTo(50)
-            .WithMessage("Popust ne smije biti veći od 50.")
-            .Must(HasAtMostTwoDecimals)
+            .GreaterThan(0).WithMessage("Popust mora biti veći od 0.")
+            .LessThanOrEqualTo(50).WithMessage("Popust ne smije biti veći od 50.")
+            .Must(value => value == decimal.Round(value, 2))
             .WithMessage("Popust može imati najviše dvije decimale.");
 
         RuleFor(x => x.ValidUntilUtc)
-            .Must(d => d != default)
-            .WithMessage("Datum važenja je obavezan.")
-            .Must(d => d.Date >= DateTime.UtcNow.Date)
-            .WithMessage("Uključena ponuda ne smije imati datum prije današnjeg UTC datuma.");
-    }
-
-    private static bool HasAtMostTwoDecimals(decimal value)
-    {
-        return decimal.Round(value, 2, MidpointRounding.AwayFromZero) == value;
+            .Cascade(CascadeMode.Stop)
+            .Must(date => date != default)
+                .WithMessage("Datum važenja je obavezan.")
+            .Must(date => date.Date >= DateTime.UtcNow.Date)
+                .WithMessage("Uključena ponuda ne smije imati datum prije današnjeg UTC datuma.");
     }
 }
 ```
 
 `StartsWith(..., StringComparison.Ordinal)` je case-sensitive. `OFF-` prolazi, `off-` ne prolazi. To zadatak traži.
 
-`HasAtMostTwoDecimals`: ako korisnik pošalje `10.125`, Round daje `10.13` što **nije jednako** originalu → validacija pada. Ne snimaš zaokruženu vrijednost.
+`CascadeMode.Stop` na oznaci zaustavlja dalja pravila ako je prazna, pa se `Trim()` ne zove na `null`. Isto na datumu: ako datum nije poslat, ne dobiješ i poruku da je u prošlosti.
+
+`value == decimal.Round(value, 2)`: ako korisnik pošalje `10.125`, Round da vrijednost koja **nije jednaka** originalu → validacija pada. Ne snimaš zaokruženu vrijednost. `InclusiveBetween(0, 50)` ne koristi, jer 0 nije dozvoljen.
 
 ### 10.4. Handler (HTTP 409 za poslovne konflikte)
 
