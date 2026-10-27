@@ -1,77 +1,51 @@
-# ProductId obrazac
+# ProductOffers — ProductId
 
-Dvije linije. Ne miješaju se.
+Samo modul ponuda. Dvije linije. Ne miješaju se.
 
-## Linija 1 — da li proizvod postoji
+## 1. Da li proizvod postoji
 
-Tabela je `Products`. Lijevo je `Id` proizvoda. Desno je `ProductId` koji je korisnik poslao.
+Tabela je `Products`. Lijevo je `Id` proizvoda. Desno je `ProductId` iz forme.
 
 ```csharp
 await ctx.Products.AnyAsync(x => x.Id == request.ProductId, ct);
 ```
 
-Ovo je jedino mjesto u backendu gdje tačno stoji `x.Id == request.ProductId`. Create ponude, i tu je ispravno.
+Ista linija ide i na create i na update.
 
-**Fajl:** `rs1_backend-2025-26/Market.Application/Modules/Catalog/ProductOffers/Commands/Create/CreateProductOfferCommandHandler.cs`
+**Create, ispravno.** `ProductOffers/Commands/Create/CreateProductOfferCommandHandler.cs`
 
 ```csharp
 var productExists = await context.Products
     .AnyAsync(x => x.Id == request.ProductId, cancellationToken);
 ```
 
-Isti obrazac za kategoriju. Tabela je `ProductCategories`, polje iz requesta je `CategoryId`.
+**Update, krivo.** `ProductOffers/Commands/Update/UpdateProductOfferCommandHandler.cs`
 
-**Create proizvoda:** `Market.Application/Modules/Catalog/Products/Commands/Create/CreateProductCommandHandler.cs`
+`request.Id` je Id ponude iz rute, ne proizvoda.
 
-```csharp
-var productCategory = await ctx.ProductCategories
-    .Where(x => x.Id == request.CategoryId)
-    .FirstOrDefaultAsync(ct);
-```
-
-**Update proizvoda:** `Market.Application/Modules/Catalog/Products/Commands/Update/UpdateProductCommandHandler.cs`
-
-```csharp
-var productCategory = await ctx.ProductCategories
-    .Where(x => x.Id == request.CategoryId)
-    .FirstOrDefaultAsync(ct);
-```
-
-Za ponudu zapamti samo ovu liniju, i na create i na update:
-
-```csharp
-await ctx.Products.AnyAsync(x => x.Id == request.ProductId, ct);
-```
-
-## Update ponude je kriv
-
-**Fajl:** `rs1_backend-2025-26/Market.Application/Modules/Catalog/ProductOffers/Commands/Update/UpdateProductOfferCommandHandler.cs`
-
-`request.Id` je Id ponude, ne proizvoda.
-
-**Sad stoji:**
+Sad stoji:
 
 ```csharp
 var productsExists = await _ctx.Products
     .AnyAsync(x => x.Id == request.Id, ct);
 ```
 
-**Treba:**
+Treba:
 
 ```csharp
 var productsExists = await _ctx.Products
     .AnyAsync(x => x.Id == request.ProductId, ct);
 ```
 
-## Linija 2 — filtriraj ponude tog proizvoda
+## 2. Ponude tog proizvoda
 
-Obe strane su `ProductId`. Ne tražiš red u `Products`. Tražiš ponude koje već pokazuju na taj proizvod.
+Tabela je `ProductOffers`. Obe strane su `ProductId`. Ovo ne traži proizvod. Traži ponude koje već pokazuju na njega.
 
 ```csharp
 x.ProductId == request.ProductId
 ```
 
-**Lista:** `Market.Application/Modules/Catalog/ProductOffers/Queries/List/ListProductOfferQueryHandler.cs`
+**Lista.** `ProductOffers/Queries/List/ListProductOfferQueryHandler.cs`
 
 ```csharp
 if (request.ProductId is > 0)
@@ -80,7 +54,7 @@ if (request.ProductId is > 0)
 }
 ```
 
-**Druga aktivna ponuda na update-u:** `UpdateProductOfferCommandHandler.cs`
+**Druga aktivna ponuda na update-u.** `UpdateProductOfferCommandHandler.cs`
 
 ```csharp
 var hasOtherActive = await _ctx.ProductOffers
@@ -90,13 +64,11 @@ var hasOtherActive = await _ctx.ProductOffers
         && x.ValidUntilUtc.Date >= todayUtc.Date, ct);
 ```
 
-`x.Id != request.Id` ovdje izuzima trenutnu ponudu. To nije provjera proizvoda.
+`x.Id != request.Id` izuzima trenutnu ponudu. To nije provjera proizvoda.
 
-## Create: aktivna ponuda je kriva
+**Create, krivo.** `CreateProductOfferCommandHandler.cs`
 
-**Fajl:** `CreateProductOfferCommandHandler.cs`
-
-**Sad stoji:**
+Sad stoji:
 
 ```csharp
 var hasActiveForProduct = await context.ProductOffers
@@ -107,7 +79,7 @@ var hasActiveForProduct = await context.ProductOffers
 
 `x.Id != request.ProductId` poredi Id ponude sa Id-om proizvoda. Nema filtera po proizvodu.
 
-**Treba:**
+Treba:
 
 ```csharp
 var hasActiveForProduct = await context.ProductOffers
@@ -116,11 +88,20 @@ var hasActiveForProduct = await context.ProductOffers
         && x.ValidUntilUtc.Date >= todayUtc, cancellationToken);
 ```
 
+## 3. Učitaj ovu ponudu
+
+`request.Id` je Id iz rute. Tabela je `ProductOffers`.
+
+```csharp
+x.Id == request.Id
+```
+
+To stoji na update-u, get-by-id i delete-u. Tu se ne piše `ProductId`.
+
 ## Ukratko
 
 | Šta radiš | Tabela | Linija |
 |-----------|--------|--------|
 | Proizvod postoji | `Products` | `x.Id == request.ProductId` |
-| Kategorija postoji | `ProductCategories` | `x.Id == request.CategoryId` |
 | Ponude ovog proizvoda | `ProductOffers` | `x.ProductId == request.ProductId` |
 | Učitaj ponudu po ruti | `ProductOffers` | `x.Id == request.Id` |
